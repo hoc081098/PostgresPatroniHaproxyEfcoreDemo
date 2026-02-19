@@ -10,7 +10,7 @@ services:
   # etcd for Patroni leader election
   etcd:
     image: quay.io/coreos/etcd:v3.5.17
-    container_name: pgsql_patroni_etcd_efcore_demo_etcd
+    container_name: etcd1
     environment:
       ETCD_NAME: etcd1
       DATA_DIR: /etcd-data
@@ -20,6 +20,8 @@ services:
       ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd:2380
       ETCD_INITIAL_CLUSTER: etcd1=http://etcd:2380
       ETCD_INITIAL_CLUSTER_STATE: new
+      ETCD_INITIAL_CLUSTER_TOKEN: postgres-ha-cluster
+    networks: [ demo ]
     volumes:
       - pgsql_patroni_etcd_efcore_demo_etcd_data:/etcd-data
     healthcheck:
@@ -29,6 +31,25 @@ services:
       retries: 3
       start_period: 10s
 
+  # Patroni node 1 (using Zalando Spilo)
+  patron1:
+    image: ghcr.io/zalando/spilo-17:4.0-p3
+    container_name: patroni1
+    environment:
+      SCOPE: postgres-ha
+      ETCD3_HOSTS: "'etcd:2379'"
+      SPILO_PROVIDER: 'local'
+      ALLOW_NOSSL: 'true'
+    networks: [ demo ]
+    depends_on: [ etcd ]
+    volumes:
+      - pgsql_patroni_etcd_efcore_demo_patroni1_data:/home/postgres/pgdata
+
+networks:
+  demo:
+
 volumes:
   pgsql_patroni_etcd_efcore_demo_etcd_data:
+    driver: local
+  pgsql_patroni_etcd_efcore_demo_patroni1_data:
     driver: local
