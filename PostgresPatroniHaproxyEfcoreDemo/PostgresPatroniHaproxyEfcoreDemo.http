@@ -1,0 +1,6 @@
+@PostgresPatroniHaproxyEfcoreDemo_HostAddress = http://localhost:5014
+
+GET {{PostgresPatroniHaproxyEfcoreDemo_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
