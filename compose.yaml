@@ -32,18 +32,30 @@ services:
       start_period: 10s
 
   # Patroni node 1 (using Zalando Spilo)
-  patron1:
+  patroni1:
     image: ghcr.io/zalando/spilo-17:4.0-p3
     container_name: patroni1
     environment:
-      SCOPE: postgres-ha
-      ETCD3_HOSTS: "'etcd:2379'"
-      SPILO_PROVIDER: 'local'
-      ALLOW_NOSSL: 'true'
+      SCOPE: postgres-ha # cluster name, multiple Spilos belonging to the same cluster must have identical scope.
+      ETCD3_HOSTS: '"etcd:2379"' # list of Etcd hosts in format '"host1:port1","host2:port2",...,"hostN:portN"'.
+      SPILO_PROVIDER: 'local' # https://github.com/zalando/spilo/blob/84ab3860ddbaca5b18dfe8e2b6c124c9d5273ca9/postgres-appliance/scripts/configure_spilo.py#L398
     networks: [ demo ]
     depends_on: [ etcd ]
     volumes:
       - pgsql_patroni_etcd_efcore_demo_patroni1_data:/home/postgres/pgdata
+
+  # Patroni node 2 (using Zalando Spilo)
+  patroni2:
+    image: ghcr.io/zalando/spilo-17:4.0-p3
+    container_name: patroni2
+    environment:
+      SCOPE: postgres-ha
+      ETCD3_HOSTS: '"etcd:2379"'
+      SPILO_PROVIDER: 'local'
+    networks: [ demo ]
+    depends_on: [ etcd ]
+    volumes:
+      - pgsql_patroni_etcd_efcore_demo_patroni2_data:/home/postgres/pgdata
 
 networks:
   demo:
@@ -52,4 +64,6 @@ volumes:
   pgsql_patroni_etcd_efcore_demo_etcd_data:
     driver: local
   pgsql_patroni_etcd_efcore_demo_patroni1_data:
+    driver: local
+  pgsql_patroni_etcd_efcore_demo_patroni2_data:
     driver: local
