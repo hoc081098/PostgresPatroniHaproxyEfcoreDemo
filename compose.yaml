@@ -32,6 +32,7 @@ services:
       start_period: 10s
 
   # Patroni node 1 (using Zalando Spilo)
+  # Spilo = Patroni + PostgreSQL + WAL-G (backup) + extensions, pre-packaged by Zalando
   patroni1:
     image: ghcr.io/zalando/spilo-17:4.0-p3
     container_name: patroni1
