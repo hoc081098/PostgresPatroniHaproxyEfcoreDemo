@@ -6,30 +6,73 @@ services:
   #    build:
   #      context: .
   #      dockerfile: PostgresPatroniHaproxyEfcoreDemo/Dockerfile
+  
+  # ---------------------------------------- etcd ----------------------------------------
 
   # etcd for Patroni leader election
-  etcd:
+  etcd1:
     image: quay.io/coreos/etcd:v3.5.17
     container_name: etcd1
-    environment:
+    hostname: etcd1
+    environment: &etcd1-env
       ETCD_NAME: etcd1
-      DATA_DIR: /etcd-data
+      ETCD_DATA_DIR: /etcd-data
       ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
-      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd1:2379
       ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
-      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd:2380
-      ETCD_INITIAL_CLUSTER: etcd1=http://etcd:2380
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd1:2380
+      ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
       ETCD_INITIAL_CLUSTER_STATE: new
       ETCD_INITIAL_CLUSTER_TOKEN: postgres-ha-cluster
     networks: [ demo ]
     volumes:
-      - pgsql_patroni_etcd_efcore_demo_etcd_data:/etcd-data
+      - pgsql_patroni_etcd_efcore_demo_etcd1_data:/etcd-data
     healthcheck:
       test: [ "CMD", "etcdctl", "endpoint", "health" ]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  etcd2:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: etcd2
+    hostname: etcd2
+    environment:
+      <<: *etcd1-env
+      ETCD_NAME: etcd2
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd2:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd2:2380
+    networks: [ demo ]
+    volumes:
+      - pgsql_patroni_etcd_efcore_demo_etcd2_data:/etcd-data
+    healthcheck:
+      test: [ "CMD", "etcdctl", "endpoint", "health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  etcd3:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: etcd3
+    hostname: etcd3
+    environment:
+      <<: *etcd1-env
+      ETCD_NAME: etcd3
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd3:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd3:2380
+    networks: [ demo ]
+    volumes:
+      - pgsql_patroni_etcd_efcore_demo_etcd3_data:/etcd-data
+    healthcheck:
+      test: [ "CMD", "etcdctl", "endpoint", "health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------- Patroni ----------------------------------------
 
   # Patroni node 1 (using Zalando Spilo)
   # Spilo = Patroni + PostgreSQL + WAL-G (backup) + extensions, pre-packaged by Zalando
@@ -38,10 +81,10 @@ services:
     container_name: patroni1
     environment:
       SCOPE: postgres-ha # cluster name, multiple Spilos belonging to the same cluster must have identical scope.
-      ETCD3_HOSTS: '"etcd:2379"' # list of Etcd hosts in format '"host1:port1","host2:port2",...,"hostN:portN"'.
+      ETCD3_HOSTS: '"etcd1:2379","etcd2:2379","etcd3:2379"' # list of Etcd hosts in format '"host1:port1","host2:port2",...,"hostN:portN"'.
       SPILO_PROVIDER: 'local' # https://github.com/zalando/spilo/blob/84ab3860ddbaca5b18dfe8e2b6c124c9d5273ca9/postgres-appliance/scripts/configure_spilo.py#L398
     networks: [ demo ]
-    depends_on: [ etcd ]
+    depends_on: [ etcd1, etcd2, etcd3 ]
     volumes:
       - pgsql_patroni_etcd_efcore_demo_patroni1_data:/home/postgres/pgdata
 
@@ -51,10 +94,10 @@ services:
     container_name: patroni2
     environment:
       SCOPE: postgres-ha
-      ETCD3_HOSTS: '"etcd:2379"'
+      ETCD3_HOSTS: '"etcd1:2379","etcd2:2379","etcd3:2379"'
       SPILO_PROVIDER: 'local'
     networks: [ demo ]
-    depends_on: [ etcd ]
+    depends_on: [ etcd1, etcd2, etcd3 ]
     volumes:
       - pgsql_patroni_etcd_efcore_demo_patroni2_data:/home/postgres/pgdata
 
@@ -64,10 +107,10 @@ services:
     container_name: patroni3
     environment:
       SCOPE: postgres-ha
-      ETCD3_HOSTS: '"etcd:2379"'
+      ETCD3_HOSTS: '"etcd1:2379","etcd2:2379","etcd3:2379"'
       SPILO_PROVIDER: 'local'
     networks: [ demo ]
-    depends_on: [ etcd ]
+    depends_on: [ etcd1, etcd2, etcd3 ]
     volumes:
       - pgsql_patroni_etcd_efcore_demo_patroni3_data:/home/postgres/pgdata
 
@@ -75,7 +118,11 @@ networks:
   demo:
 
 volumes:
-  pgsql_patroni_etcd_efcore_demo_etcd_data:
+  pgsql_patroni_etcd_efcore_demo_etcd1_data:
+    driver: local
+  pgsql_patroni_etcd_efcore_demo_etcd2_data:
+    driver: local
+  pgsql_patroni_etcd_efcore_demo_etcd3_data:
     driver: local
   pgsql_patroni_etcd_efcore_demo_patroni1_data:
     driver: local
