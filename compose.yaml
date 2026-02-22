@@ -10,6 +10,7 @@ services:
   # ---------------------------------------- etcd ----------------------------------------
 
   # etcd for Patroni leader election
+  # Sample: https://github.com/etcd-io/etcd/blob/11e4bce77075583d48b5e8273018f83ca196f784/tests/antithesis/config/docker-compose-3-node.yml
   etcd1:
     image: quay.io/coreos/etcd:v3.5.17
     container_name: etcd1
