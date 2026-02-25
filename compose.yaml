@@ -135,6 +135,22 @@ services:
     volumes:
       - pgsql_patroni_etcd_efcore_demo_patroni3_data:/home/postgres/pgdata
       - ./patroni/post_init_wrapper.sh:/post_init_wrapper.sh:ro
+  
+  # ----------------------------------------- HAProxy ----------------------------------------
+  haproxy1:
+    image: haproxy:2.8.18
+    container_name: haproxy1
+    hostname: haproxy1
+    networks: [ demo ]
+    depends_on: [ patroni1, patroni2, patroni3 ]
+    volumes:
+      # Mount your local haproxy.cfg file into the container's default config path
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    healthcheck:
+      test: [ "CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 networks:
   demo:
