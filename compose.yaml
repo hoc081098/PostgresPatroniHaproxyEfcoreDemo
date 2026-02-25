@@ -145,7 +145,7 @@ services:
     depends_on: [ patroni1, patroni2, patroni3 ]
     volumes:
       # Mount your local haproxy.cfg file into the container's default config path
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     healthcheck:
       test: [ "CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg" ]
       interval: 10s
