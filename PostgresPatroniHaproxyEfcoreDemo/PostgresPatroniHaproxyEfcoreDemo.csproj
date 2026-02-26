@@ -26,6 +26,7 @@
 
     <ItemGroup>
       <Folder Include="Data\Configurations\Read\" />
+      <Folder Include="Data\Configurations\Write\" />
     </ItemGroup>
 
 </Project>
