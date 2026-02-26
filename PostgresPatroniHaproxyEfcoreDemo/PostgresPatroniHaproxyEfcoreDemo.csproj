@@ -29,4 +29,8 @@
       <Folder Include="Data\Configurations\Write\" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\PostgresPatroniHaproxyEfcoreDemo.ServiceDefaults\PostgresPatroniHaproxyEfcoreDemo.ServiceDefaults.csproj" />
+    </ItemGroup>
+
 </Project>
