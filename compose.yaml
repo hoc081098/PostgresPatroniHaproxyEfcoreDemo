@@ -147,7 +147,9 @@ services:
       # Mount your local haproxy.cfg file into the container's default config path
       - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     ports:
-      - "8404:8404" # Stats page
+      - "5000:5000" # PostgreSQL primary (read-write) → postgres_primary_backend
+      - "5001:5001" # PostgreSQL replicas (read-only) → postgres_replicas_backend
+      - "8404:8404" # HAProxy stats page
     healthcheck:
       test: [ "CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg" ]
       interval: 10s
