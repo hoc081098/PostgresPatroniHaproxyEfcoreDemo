@@ -170,7 +170,7 @@ hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 
 ### 🐛 Observability & Debugging
 
-- [ ] **HAProxy stats page** (`:8404`) — walk through important columns to understand backend health and load distribution:
+- [x] **HAProxy stats page** (`:8404`) — walk through important columns to understand backend health and load distribution:
   - `Status` column is the most important. It shows the current state of a backend server:
     - `UP` means the backend is healthy and receiving traffic
     - `DOWN` means it's unhealthy and traffic is not routed to this server.
@@ -180,9 +180,13 @@ hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
   - `Wght` defines the load balancing weight of the server. If multiple servers have the same weight, traffic is distributed evenly (e.g., round-robin).
     If weights differ, traffic is distributed proportionally.
   - `Act / Bck`:
-    - `Act` indicates active servers in the backend.
-    - `Bck` indicates backup servers that are only used if all active servers are down. In this setup, we have no backup servers, so this column should show `_`.
-  - `Chk / Dwn / Dwntme`:
+    - `Act` shows whether this server is configured as an **active** server in the backend.
+      It displays `Y` if the server is active (receives traffic under normal conditions),
+      and `-` if not.
+    - `Bck` shows whether this server is configured as a **backup** server.
+      It displays `Y` if the server is marked as `backup` in HAProxy configuration.
+      Backup servers are only used when all active servers are down.
+  - `Chk / Dwn / Dwntime`:
     - `Chk` indicates the number of consecutive failed health checks.
       If this count exceeds the configured threshold (`fall` parameter), HAProxy marks the server as `DOWN`. This is useful to understand whether a server flapped or genuinely failed.
     - `Dwn` indicates the total number of times the server has been marked as `DOWN`.
