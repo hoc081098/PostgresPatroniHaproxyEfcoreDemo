@@ -152,15 +152,66 @@ hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 - [ ] EF Core write queries resume without any code change
 - [ ] `docker start patroni1` → node rejoins as replica, HAProxy adds it back to the read pool
 
-### 📊 Read Load Balancing
+### ✅ Read Load Balancing (done)
 
-- [ ] Send many `GET /` requests and log which PostgreSQL backend each query lands on — add `inet_server_addr()` or `pg_backend_pid()` to the read endpoint to verify round-robin is working
-- [ ] Simulate replica lag with `pg_sleep()` on one replica and watch HAProxy pull it out of rotation
+`GET /products` returns `servedByNode` — the IP of the PostgreSQL node that actually served the query (via `inet_server_addr()`).
 
-### 🏗️ EF Core Migrations
+After posting a few products and calling `GET /products` repeatedly, HAProxy round-robin distributed read queries across replicas:
 
-- [ ] Create a real entity (e.g. `Product`), apply migration only through the write connection (`:5000`)
-- [ ] Verify the schema is replicated to all replicas automatically
+- First few requests → served by **patroni3**
+- Subsequent requests → served by **patroni2**
+
+This confirms that:
+1. WAL streaming replication is working — replicas have up-to-date data written to the primary
+2. HAProxy round-robin across healthy replicas is working — `servedByNode` IP changes across requests
+3. `ApplicationReadDbContext` is correctly connecting through HAProxy `:5001`
+
+```bash
+# Write a product
+curl -X POST http://localhost:5050/products \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Apple", "price": 1.99}'
+
+# Read products repeatedly — observe servedByNode changing between replica IPs
+curl http://localhost:5050/products
+curl http://localhost:5050/products
+curl http://localhost:5050/products
+```
+
+- [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
+
+### ✅ EF Core Migrations & CRUD Endpoints (done)
+
+**Entity:** `Product` (`id`, `name`, `price`, `created_at`) — configured via `IEntityTypeConfiguration` with separate Write/Read configs.
+
+**Migration** is applied automatically on app startup via `writeDb.Database.MigrateAsync()` — runs only against the write DB (`:5000` → primary). Replicas receive the schema change automatically via WAL streaming replication.
+
+```bash
+# Manual migration (if needed outside of app startup)
+dotnet ef migrations add <MigrationName> --context ApplicationWriteDbContext --output-dir Data/Migrations
+```
+
+**Endpoints:**
+
+```
+POST /products          → writes via HAProxy :5000 → primary
+GET  /products          → reads via HAProxy :5001 → replicas (round-robin)
+```
+
+`GET /products` response includes `servedByNode` — the IP of the PostgreSQL replica that served the query (via `inet_server_addr()`), so you can verify round-robin is working by making multiple requests and observing the IP changing.
+
+```bash
+# Write a product
+curl -X POST http://localhost:5050/products \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Apple", "price": 1.99}'
+
+# Read products — check servedByNode changes across calls
+curl http://localhost:5050/products
+curl http://localhost:5050/products
+curl http://localhost:5050/products
+```
+
 - [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
 
 ### 🔒 Security — Non-superuser App User
