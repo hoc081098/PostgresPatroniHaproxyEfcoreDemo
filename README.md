@@ -34,6 +34,8 @@
                           └──────────────────────┘
 ```
 
+---
+
 ## What Is Implemented
 
 | Component                  | Detail                                                                                                                                                   |
@@ -45,69 +47,53 @@
 | **Health checks**          | HAProxy uses Patroni REST API (`GET /primary`, `GET /replica`) over HTTP on port 8008 while PostgreSQL traffic stays TCP                                 |
 | **ASP.NET Core + EF Core** | Two `DbContext`s — `ApplicationWriteDbContext` (→ HAProxy :5000) and `ApplicationReadDbContext` (→ HAProxy :5001)                                        |
 
+---
+
 ## How to Run
 
 ```bash
 docker compose up -d
-```
 
-Check cluster status:
-
-```bash
 # Patroni cluster status
 # Note: no -c flag needed — Spilo pre-sets PATRONICTL_CONFIG_FILE env var inside the container
 docker exec -it patroni1 patronictl list
 
-# HAProxy stats (browser)
-open http://localhost:8404   # credentials: haproxy / haproxy
-
-# Which node is primary right now?
-docker exec -it patroni1 patronictl list | grep Leader
-```
-
-Test connectivity via the ASP.NET Core API:
-
-```bash
-curl http://localhost:5050/
+# HAProxy stats (browser) — credentials: haproxy / haproxy
+open http://localhost:8404
 ```
 
 ---
 
-## What Can / Should Be Demoed Next
+## Demo Scenarios
 
-### 🔁 Failover & Recovery
+### ✅ Manual Switchover (done)
 
-#### Manual Failover ✅
+A **switchover** is a graceful handover — the primary finishes in-flight transactions before stepping down.
+Use `failover` only when the primary is already dead.
 
-- `docker exec -it patroni1 patronictl switchover --leader <leader> --scheduled now --force` and observe HAProxy rerouting write traffic to the new primary in real time (watch the stats page at `:8404`)
-
-  - `switchover`: graceful handover — primary finishes in-flight transactions before stepping down (vs `failover` which is used when the primary is already dead)
-  - `--leader <leader>`: the current primary **Member name** from `patronictl list` (when using Spilo, this is the container ID e.g. `8366a0cc9c0b`, not the hostname `patroni1`); `--master` was deprecated in Patroni v3.x
-  - `--candidate <replica>`: which replica to promote; omit to let Patroni pick the most up-to-date one automatically
-  - `--scheduled now`: run immediately instead of scheduling for a future time
-  - `--force`: skip the interactive `y/N` confirmation prompt
-
-###### Script for manual switchover:
+> **Note:** When using Spilo, the `--leader` value is the **container ID** shown in the `Member` column of
+> `patronictl list` (e.g. `8366a0cc9c0b`), not the hostname `patroni1`.
+> `--master` was deprecated in Patroni v3.x.
 
 ```bash
-# 1. Check who is currently the primary — note the Member name (container ID when using Spilo)
+# 1. Check current cluster state — note the Member name of the Leader
 docker exec -it patroni1 patronictl list
 
-# 2. Switchover — replace <leader-member-name> with the actual Member name from step 1
-#    e.g. --leader 8366a0cc9c0b  (omit --candidate to let Patroni choose automatically)
+# 2. Switchover — replace <leader-member-name> with the Member name from step 1
+#    Omit --candidate to let Patroni pick the most up-to-date replica automatically
 docker exec -it patroni1 patronictl switchover \
   --leader <leader-member-name> \
   --scheduled now \
   --force
 
-# 3. Verify the new primary after switchover
+# 3. Verify the new primary
 docker exec -it patroni1 patronictl list
 ```
 
-###### The result (terminal output):
+**Terminal output:**
 
-```terminaloutput
-hoc.nguyen@MBAM0187 PostgresPatroniHaproxyEfcoreDemo % docker exec -it patroni1 patronictl list
+```
+hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 + Cluster: postgres-ha (7609605213415538750) -----+----+-----------+
 | Member       | Host       | Role    | State     | TL | Lag in MB |
 +--------------+------------+---------+-----------+----+-----------+
@@ -116,9 +102,8 @@ hoc.nguyen@MBAM0187 PostgresPatroniHaproxyEfcoreDemo % docker exec -it patroni1 
 | da0b3dc3cce5 | 172.21.0.7 | Replica | streaming |  6 |         0 |
 +--------------+------------+---------+-----------+----+-----------+
 
-
-hoc.nguyen@MBAM0187 PostgresPatroniHaproxyEfcoreDemo % docker exec -it patroni1 patronictl switchover \
-  --leader 8366a0cc9c0b \ 
+hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl switchover \
+  --leader 8366a0cc9c0b \
   --scheduled now \
   --force
 Current cluster topology
@@ -138,8 +123,7 @@ Current cluster topology
 | da0b3dc3cce5 | 172.21.0.7 | Leader  | running |  7 |           |
 +--------------+------------+---------+---------+----+-----------+
 
-
-hoc.nguyen@MBAM0187 PostgresPatroniHaproxyEfcoreDemo % docker exec -it patroni1 patronictl list
+hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 + Cluster: postgres-ha (7609605213415538750) -----+----+-----------+
 | Member       | Host       | Role    | State     | TL | Lag in MB |
 +--------------+------------+---------+-----------+----+-----------+
@@ -149,69 +133,59 @@ hoc.nguyen@MBAM0187 PostgresPatroniHaproxyEfcoreDemo % docker exec -it patroni1 
 +--------------+------------+---------+-----------+----+-----------+
 ```
 
-###### The result (screenshot from HAProxy stats page):
+**HAProxy stats — before & after:**
 
 <img src="./images/img_manual_failover_before.png" alt="HAProxy stats before switchover" height="500">
 
-> **Before switchover** — Leader: `patroni3` (`8366a0cc9c0b`) · `patroni1` & `patroni2` are replicas
-
-<br>
+> **Before** — Leader: `patroni3` (`8366a0cc9c0b`) · `patroni1` & `patroni2` are replicas
 
 <img src="./images/img_manual_failover_after.png" alt="HAProxy stats after switchover" height="500">
 
-> **After switchover** — Leader: `patroni1` (`da0b3dc3cce5`) · `patroni2` & `patroni3` are replicas
+> **After** — Leader: `patroni1` (`da0b3dc3cce5`) · `patroni2` & `patroni3` are replicas
 
-- [ ] **Kill the primary** — `docker stop patroni1` → Patroni elects a new leader, HAProxy health checks detect it
-  automatically, EF Core write queries resume without any code change
-- [ ] **Rejoin a node** — `docker start patroni1` → node rejoins as replica, HAProxy adds it back to the read pool
+---
+
+### 🔁 Automatic Failover (kill the primary)
+
+- [ ] `docker stop patroni1` → Patroni elects a new leader automatically
+- [ ] HAProxy detects the change via health checks within ~3–9s (`inter 3s fall 3`)
+- [ ] EF Core write queries resume without any code change
+- [ ] `docker start patroni1` → node rejoins as replica, HAProxy adds it back to the read pool
 
 ### 📊 Read Load Balancing
 
-- [ ] **Demonstrate round-robin reads** — send many `GET /` requests and log which PostgreSQL backend each query lands
-  on (add `pg_backend_pid()` or `inet_server_addr()` to the read endpoint)
-- [ ] **Simulate a replica lag** — add `pg_sleep()` on one replica and watch HAProxy's health check eventually pull it
-  out of rotation
+- [ ] Send many `GET /` requests and log which PostgreSQL backend each query lands on — add `inet_server_addr()` or `pg_backend_pid()` to the read endpoint to verify round-robin is working
+- [ ] Simulate replica lag with `pg_sleep()` on one replica and watch HAProxy pull it out of rotation
 
-### 🏗️ EF Core & Database Migrations
+### 🏗️ EF Core Migrations
 
-- [ ] **Run EF Core migrations** — create a real entity (e.g., `Product`), apply migration only through the write
-  connection, verify replication to replicas
-- [ ] **Read-your-writes concern** — demonstrate the edge case where a write followed immediately by a read on a replica
-  may not see the freshest data (replication lag)
+- [ ] Create a real entity (e.g. `Product`), apply migration only through the write connection (`:5000`)
+- [ ] Verify the schema is replicated to all replicas automatically
+- [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
 
-### 🔒 Security Hardening (non-superuser app user)
+### 🔒 Security — Non-superuser App User
 
-- [ ] **Verify the app never uses `postgres` superuser** — show that `app_user` only has `CONNECT` + `USAGE` + DML on
-  `app_db`, not superuser privileges (follows Patroni docs recommendation)
-- [ ] **Grant least-privilege** — add explicit `GRANT` statements in `post_init_wrapper.sh` for specific schemas/tables
+- [ ] Verify the app never uses the `postgres` superuser — `app_user` should only have `CONNECT` + `USAGE` + DML on `app_db` (follows [Patroni docs recommendation](https://patroni.readthedocs.io/en/latest/security.html))
+- [ ] Add explicit `GRANT` statements in `post_init_wrapper.sh` scoped to specific schemas/tables
 
 ### 🐛 Observability & Debugging
 
-- [ ] **HAProxy stats deep-dive** — explain each column (current sessions, bytes in/out, health check status, last
-  change) on the `:8404` stats page
-- [ ] **Patroni REST API tour** — `curl http://localhost:8008/primary`, `/replica`, `/health`, `/patroni`, `/cluster`
-  directly against each node
-- [ ] **etcd data inspection** — `etcdctl get --prefix /service/postgres-ha` to see the DCS keys Patroni writes (leader
-  lock, member info, config)
+- [ ] **HAProxy stats page** (`:8404`) — walk through each column: current sessions, bytes in/out, health check status, last change time
+- [ ] **Patroni REST API** — `curl` directly against each node: `/primary`, `/replica`, `/health`, `/patroni`, `/cluster`
+- [ ] **etcd inspection** — `etcdctl get --prefix /service/postgres-ha` to see the DCS keys Patroni writes (leader lock, member info, config)
 
-### 🌐 Connection Pooling (next layer)
+### 🌐 Connection Pooling
 
-- [ ] **Add PgBouncer** — sit PgBouncer between HAProxy and the app; compare connection count with and without pooling
-  under load
-- [ ] **Transaction-mode pooling** — show how it interacts with EF Core (session-level features like temp tables,
-  `SET LOCAL`, advisory locks won't work)
+- [ ] Add **PgBouncer** between the app and HAProxy; compare connection count with and without pooling under load
+- [ ] Show how **transaction-mode pooling** interacts with EF Core — session-level features (`SET LOCAL`, temp tables, advisory locks) won't work in this mode
 
 ### 🏋️ Load Testing
 
-- [ ] **k6 / wrk / pgbench** — generate concurrent read + write load; watch HAProxy stats, PostgreSQL
-  `pg_stat_activity`, and replication lag in real time
-- [ ] **Chaos test** — combine failover + load test; verify p99 latency and error rate during the election window
+- [ ] **k6 / pgbench** — concurrent read + write load; observe HAProxy stats, `pg_stat_activity`, replication lag in real time
+- [ ] **Chaos test** — combine failover + load test; measure p99 latency and error rate during the election window
 
 ### ☁️ Production Patterns (stretch goals)
 
-- [ ] **WAL-G backup & restore** — Spilo ships with WAL-G; configure an S3-compatible bucket (MinIO) and demo PITR (
-  Point-In-Time Recovery)
-- [ ] **Multiple HAProxy instances + Keepalived** — add a second HAProxy and a virtual IP (VIP) to eliminate the HAProxy
-  single point of failure
-- [ ] **Kubernetes / Helm** — migrate the same topology to k8s using
-  the [Zalando Postgres Operator](https://github.com/zalando/postgres-operator)
+- [ ] **WAL-G + MinIO** — configure S3-compatible backup, demo PITR (Point-In-Time Recovery)
+- [ ] **HA HAProxy** — add a second HAProxy + Keepalived VIP to remove HAProxy as a single point of failure
+- [ ] **Kubernetes** — migrate to k8s using the [Zalando Postgres Operator](https://github.com/zalando/postgres-operator)
