@@ -171,36 +171,48 @@ hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 ### 🐛 Observability & Debugging
 
 - [x] **HAProxy stats page** (`:8404`) — walk through important columns to understand backend health and load distribution:
-  - `Status` column is the most important. It shows the current state of a backend server:
-    - `UP` means the backend is healthy and receiving traffic
-    - `DOWN` means it's unhealthy and traffic is not routed to this server.
-  - `LastChk` displays the result of the most recent health check.
-    - `	L7OK/200 in 3ms`: Layer 7 check succeeded, HTTP 200 response, took 3 milliseconds.
-    - `	L7STS/503 in 5ms`: Layer 7 check failed, HTTP 503 response, took 5 milliseconds. HAProxy considers this a failure.
-  - `Wght` defines the load balancing weight of the server. If multiple servers have the same weight, traffic is distributed evenly (e.g., round-robin).
-    If weights differ, traffic is distributed proportionally.
-  - `Act / Bck`:
-    - `Act` shows whether this server is configured as an **active** server in the backend.
-      It displays `Y` if the server is active (receives traffic under normal conditions),
-      and `-` if not.
-    - `Bck` shows whether this server is configured as a **backup** server.
-      It displays `Y` if the server is marked as `backup` in HAProxy configuration.
-      Backup servers are only used when all active servers are down.
-  - `Chk / Dwn / Dwntime`:
-    - `Chk` indicates the number of consecutive failed health checks.
-      If this count exceeds the configured threshold (`fall` parameter), HAProxy marks the server as `DOWN`. This is useful to understand whether a server flapped or genuinely failed.
-    - `Dwn` indicates the total number of times the server has been marked as `DOWN`.
-    - `Dwntme` shows the total accumulated time the server has been in `DOWN` state.
-    - These columns are extremely useful for understanding failover frequency and stability issues.
-  - `Sessions`:
-    - `Cur` shows the current number of active sessions on that backend server.
-    - `Max` shows the maximum number of sessions that have been active at the same time since HAProxy started.
-    - `Total` shows the total number of sessions that have been handled by that server since HAProxy started.
-    - If one backend node consistently shows higher `Cur` values, it may indicate uneven load balancing.
-  - `Bytes`:
-    - `In` shows the total number of bytes received from clients for that backend server.
-    - `Out` shows the total number of bytes sent to clients from that backend server.
-    - If one server has significantly higher `Bytes In` or `Bytes Out`, it may indicate it's handling more traffic than others, which could be a sign of load imbalance or a hotspot.
+
+  **Queue** — `Cur / Max / Limit`
+  - Number of requests currently waiting in queue because all backend connections are busy.
+  - In a healthy low-traffic system this is always `0`. A non-zero `Cur` means the backend is saturated.
+
+  **Sessions** — `Cur / Max / Limit / Total / LbTot / Last`
+  - `Cur` — number of currently active sessions on this server.
+  - `Max` — peak concurrent sessions since HAProxy started.
+  - `Total` — cumulative sessions handled since HAProxy started.
+  - `LbTot` — total times this server was selected by the load balancer (useful to verify round-robin is distributing evenly).
+  - `Last` — time elapsed since the last session on this server (e.g. `55s`, `13m15s`). A very large value means the server hasn't received traffic recently.
+
+  **Bytes** — `In / Out`
+  - Total bytes received from clients (`In`) and sent to clients (`Out`) for this server since HAProxy started.
+  - If one node has significantly higher values than others, it may indicate uneven load distribution or a hotspot.
+
+  **Status**
+  - The most important column. Shows the current health state of each backend server:
+    - `UP` (green) — healthy, receiving traffic.
+    - `DOWN` (red) — failed health checks, no traffic routed to this server.
+    - `UP, going down` / `DOWN, going up` — transitional states during `fall`/`rise` threshold counting.
+
+  **LastChk** — result of the most recent health check
+  - `L7OK/200 in 3ms` — Layer 7 (HTTP) check succeeded, Patroni returned HTTP 200, took 3 ms.
+  - `L7STS/503 in 5ms` — Layer 7 check failed, Patroni returned HTTP 503 (node is not primary/replica), took 5 ms. HAProxy counts this toward the `fall` threshold.
+  - `* L7STS/0 in 3ms` — the `*` prefix means this result caused a state change (server just went DOWN or came back UP).
+
+  **Wght** — load balancing weight
+  - All servers with equal weight receive equal share of traffic (pure round-robin).
+  - If weights differ, traffic is distributed proportionally.
+
+  **Act / Bck**
+  - `Act = Y` — server is configured as an **active** server (receives traffic under normal conditions).
+  - `Bck = Y` — server is a **backup** server, only used when all active servers are down.
+  - `-` means not applicable for that role.
+
+  **Chk / Dwn / Dwntme**
+  - `Chk` — number of consecutive failed health checks since the last state change. Once this reaches the `fall` threshold (configured as `fall 3`), the server is marked `DOWN`.
+  - `Dwn` — total number of times this server has been marked `DOWN` since HAProxy started. A high number indicates instability or frequent flapping.
+  - `Dwntme` — total accumulated downtime. Useful for measuring overall availability.
+
+  <img src="./images/img_manual_failover_before.png" alt="HAProxy stats — during switchover transition" height="400">
 
 - [ ] **Patroni REST API** — `curl` directly against each node: `/primary`, `/replica`, `/health`, `/patroni`, `/cluster`
 - [ ] **etcd inspection** — `etcdctl get --prefix /service/postgres-ha` to see the DCS keys Patroni writes (leader lock, member info, config)
