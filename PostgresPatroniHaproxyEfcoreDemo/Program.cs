@@ -1,6 +1,7 @@
 using Ardalis.GuardClauses;
 using Microsoft.EntityFrameworkCore;
 using PostgresPatroniHaproxyEfcoreDemo.Data;
+using PostgresPatroniHaproxyEfcoreDemo.Data.Entities;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,16 +15,31 @@ builder.Services.AddDbContext<ApplicationReadDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("ReadDatabase");
     Guard.Against.NullOrWhiteSpace(connectionString);
-    options.UseNpgsql(connectionString);
+    options
+        .UseNpgsql(connectionString)
+        .UseSnakeCaseNamingConvention()
+        // Read-only context — disable change tracking globally to reduce memory overhead.
+        // Equivalent to appending .AsNoTracking() on every query, but applied at the context level.
+        .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
 });
 builder.Services.AddDbContext<ApplicationWriteDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("WriteDatabase");
     Guard.Against.NullOrWhiteSpace(connectionString);
-    options.UseNpgsql(connectionString);
+    options
+        .UseNpgsql(connectionString)
+        .UseSnakeCaseNamingConvention();
 });
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    // Apply pending EF Core migrations on startup (write DB only — replicas receive schema via WAL replication)
+    using var scope = app.Services.CreateScope();
+    var writeDb = scope.ServiceProvider.GetRequiredService<ApplicationWriteDbContext>();
+    await writeDb.Database.MigrateAsync();
+}
 
 app.MapDefaultEndpoints();
 
@@ -35,6 +51,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// GET / — health check: verify connectivity to both write and read DB via HAProxy
 app.MapGet("/",
     (ApplicationReadDbContext readDb, ApplicationWriteDbContext writeDb) =>
     {
@@ -48,4 +65,40 @@ app.MapGet("/",
         };
     });
 
+// POST /products — write through HAProxy :5000 → primary node
+app.MapPost("/products",
+    async (ProductRequest request, ApplicationWriteDbContext writeDb) =>
+    {
+        var product = Product.Create(request.Name, request.Price, DateTimeOffset.UtcNow);
+
+        writeDb.Products.Add(product);
+        await writeDb.SaveChangesAsync();
+
+        return Results.Created($"/products/{product.Id}", product);
+    });
+
+// GET /products — read through HAProxy :5001 → replica nodes (round-robin)
+// Each request may land on a different replica — see inet_server_addr() in the response to verify
+app.MapGet("/products", async (ApplicationReadDbContext readDb) =>
+{
+    var products = await readDb.Products
+        .OrderByDescending(p => p.CreatedAtUtc)
+        .ToListAsync();
+
+    // inet_server_addr() returns the IP of the PostgreSQL node that served this query —
+    // useful to confirm round-robin load balancing across replicas
+    var serverAddr = await readDb.Database
+        .SqlQuery<string>($"SELECT inet_server_addr()::text")
+        .FirstOrDefaultAsync();
+
+    return new
+    {
+        ServedByNode = serverAddr,
+        ProductsCount = products.Count,
+        Products = products
+    };
+});
+
 app.Run();
+
+sealed record ProductRequest(string Name, decimal Price);
