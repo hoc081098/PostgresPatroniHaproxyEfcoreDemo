@@ -182,35 +182,31 @@ curl http://localhost:5050/products
 
 ### ✅ EF Core Migrations & CRUD Endpoints (done)
 
-**Entity:** `Product` (`id`, `name`, `price`, `created_at`) — configured via `IEntityTypeConfiguration` with separate Write/Read configs.
+**Entity:** `Product` — uses a **factory pattern** (`Product.Create(...)`) with private setters to prevent invalid state. EF Core materializes it via a private parameterless constructor.
 
-**Migration** is applied automatically on app startup via `writeDb.Database.MigrateAsync()` — runs only against the write DB (`:5000` → primary). Replicas receive the schema change automatically via WAL streaming replication.
+```csharp
+// Product.Create() — the only valid way to create a Product
+Product.Create(name: "Apple", price: 1.99m, createdAtUtc: DateTimeOffset.UtcNow)
+```
+
+**Write vs Read `IEntityTypeConfiguration`:**
+- `ProductWriteConfiguration` — full DDL constraints: `HasMaxLength`, `HasColumnType`, `IsRequired`, `UseIdentityByDefaultColumn`. These drive migration-generated SQL.
+- `ProductReadConfiguration` — minimal: only `HasKey`. No DDL constraints needed since the Read context never runs migrations.
+- `ApplicationReadDbContext` registers with `UseQueryTrackingBehavior(NoTracking)` — no change tracking overhead for read-only queries.
+
+**Migration** is applied automatically on startup via `writeDb.Database.MigrateAsync()` — runs only against the write DB (`:5000` → primary). Schema propagates to replicas automatically via WAL streaming replication.
 
 ```bash
-# Manual migration (if needed outside of app startup)
-dotnet ef migrations add <MigrationName> --context ApplicationWriteDbContext --output-dir Data/Migrations
+# Add a new migration manually (if needed)
+dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir Data/Migrations
 ```
 
 **Endpoints:**
 
-```
-POST /products          → writes via HAProxy :5000 → primary
-GET  /products          → reads via HAProxy :5001 → replicas (round-robin)
-```
-
-`GET /products` response includes `servedByNode` — the IP of the PostgreSQL replica that served the query (via `inet_server_addr()`), so you can verify round-robin is working by making multiple requests and observing the IP changing.
-
-```bash
-# Write a product
-curl -X POST http://localhost:5050/products \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Apple", "price": 1.99}'
-
-# Read products — check servedByNode changes across calls
-curl http://localhost:5050/products
-curl http://localhost:5050/products
-curl http://localhost:5050/products
-```
+| Method | Path | DbContext | Routes to |
+|---|---|---|---|
+| `POST` | `/products` | `ApplicationWriteDbContext` | HAProxy `:5000` → primary |
+| `GET` | `/products` | `ApplicationReadDbContext` | HAProxy `:5001` → replicas (round-robin) |
 
 - [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
 
