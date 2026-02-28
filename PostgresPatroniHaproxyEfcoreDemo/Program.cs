@@ -87,8 +87,10 @@ app.MapGet("/products", async (ApplicationReadDbContext readDb) =>
 
     // inet_server_addr() returns the IP of the PostgreSQL node that served this query —
     // useful to confirm round-robin load balancing across replicas
+    // Notice the AS "Value" alias. When EF Core maps to a primitive type, it expects a property named "Value".
+    // The quotes preserve the exact casing (PostgreSQL lowercases unquoted identifiers by default).
     var serverAddr = await readDb.Database
-        .SqlQuery<string>($"SELECT inet_server_addr()::text")
+        .SqlQuery<string>($"SELECT inet_server_addr()::text AS \"Value\"")
         .FirstOrDefaultAsync();
 
     return new
