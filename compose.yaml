@@ -80,6 +80,7 @@ services:
   patroni1:
     image: ghcr.io/zalando/spilo-17:4.0-p3
     container_name: patroni1
+    hostname: patroni1
     # Backup Spilo's original /scripts/post_init.sh → .orig, then replace it with our wrapper,
     # so our wrapper can call the original first and then run app-specific init.
     entrypoint: &patroni-entrypoint >
@@ -92,9 +93,14 @@ services:
         exec /launch.sh
       "
     environment: &patroni-env
+      PATRONI_NAME: patroni1
       SCOPE: postgres-ha # cluster name, multiple Spilos belonging to the same cluster must have identical scope.
       ETCD3_HOSTS: '"etcd1:2379","etcd2:2379","etcd3:2379"' # list of Etcd hosts in format '"host1:port1","host2:port2",...,"hostN:portN"'.
       SPILO_PROVIDER: 'local' # https://github.com/zalando/spilo/blob/84ab3860ddbaca5b18dfe8e2b6c124c9d5273ca9/postgres-appliance/scripts/configure_spilo.py#L398
+      SPILO_CONFIGURATION: |
+        postgresql:
+          remove_data_directory_on_rewind_failure: true
+          remove_data_directory_on_diverged_timelines: true
       PGUSER_SUPERUSER: postgres           # superuser for Patroni management (default)
       PGPASSWORD_SUPERUSER: postgres_pass  # superuser password
       PGUSER_STANDBY: standby              # replication user
@@ -114,9 +120,11 @@ services:
   patroni2:
     image: ghcr.io/zalando/spilo-17:4.0-p3
     container_name: patroni2
+    hostname: patroni2
     entrypoint: *patroni-entrypoint
     environment:
       <<: *patroni-env
+      PATRONI_NAME: patroni2
     networks: [ demo ]
     depends_on: [ etcd1, etcd2, etcd3 ]
     volumes:
@@ -127,9 +135,11 @@ services:
   patroni3:
     image: ghcr.io/zalando/spilo-17:4.0-p3
     container_name: patroni3
+    hostname: patroni3
     entrypoint: *patroni-entrypoint
     environment:
       <<: *patroni-env
+      PATRONI_NAME: patroni3
     networks: [ demo ]
     depends_on: [ etcd1, etcd2, etcd3 ]
     volumes:

@@ -71,8 +71,8 @@ open http://localhost:8404
 A **switchover** is a graceful handover — the primary finishes in-flight transactions before stepping down.
 Use `failover` only when the primary is already dead.
 
-> **Note:** When using Spilo, the `--leader` value is the **container ID** shown in the `Member` column of
-> `patronictl list` (e.g. `8366a0cc9c0b`), not the hostname `patroni1`.
+> **Note:** This repo sets stable Patroni member names via `PATRONI_NAME` (`patroni1`, `patroni2`, `patroni3`),
+> so `--leader` should use the `Member` value from `patronictl list` (for example `patroni1`).
 > `--master` was deprecated in Patroni v3.x.
 
 ```bash
@@ -147,10 +147,166 @@ hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 
 ### 💥 Automatic Failover (kill the primary)
 
-- [ ] `docker stop patroni1` → Patroni elects a new leader automatically
-- [ ] HAProxy detects the change via health checks within ~3–9s (`inter 3s fall 3`)
-- [ ] EF Core write queries resume without any code change
-- [ ] `docker start patroni1` → node rejoins as replica, HAProxy adds it back to the read pool
+```bash
+# one-shot demo script: kill leader -> auto failover -> write check -> rejoin check
+cat > /tmp/demo_auto_failover.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+cluster() {
+  for c in patroni1 patroni2 patroni3; do
+    local out
+    out="$(docker exec "$c" patronictl list 2>/dev/null || true)"
+    if [[ -n "$out" ]]; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+  done
+  echo "No reachable Patroni node for patronictl list" >&2
+  return 1
+}
+
+leader_member() {
+  cluster | awk -F'|' '$4 ~ /Leader/ {gsub(/ /, "", $2); print $2; exit}'
+}
+
+wait_new_leader() {
+  local old_leader="$1"
+  for _ in {1..45}; do
+    local now
+    now="$(leader_member || true)"
+    if [[ -n "${now}" && "${now}" != "${old_leader}" ]]; then
+      echo "$now"
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+wait_streaming_zero_lag() {
+  local member="$1"
+  for _ in {1..45}; do
+    local state_lag
+    state_lag="$(cluster | awk -F'|' -v m="$member" '$2 ~ m {gsub(/ /, "", $5); gsub(/ /, "", $7); print $5 "," $7; exit}')"
+    echo "[$(date +%H:%M:%S)] ${member}: ${state_lag:-missing}"
+    if [[ "$state_lag" == "streaming,0" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+echo "== BEFORE =="
+cluster
+
+OLD_LEADER="$(leader_member)"
+echo "Old leader: ${OLD_LEADER}"
+docker stop "${OLD_LEADER}" >/dev/null
+
+NEW_LEADER="$(wait_new_leader "${OLD_LEADER}")"
+echo "New leader: ${NEW_LEADER}"
+echo "== AFTER FAILOVER =="
+cluster
+
+echo "Write check via HAProxy :5000"
+curl -sS -X POST http://localhost:5050/products \
+  -H "Content-Type: application/json" \
+  -d '{"name":"After failover","price":9.99}'
+echo
+
+echo "Rejoin old leader: ${OLD_LEADER}"
+docker start "${OLD_LEADER}" >/dev/null
+
+echo "Wait until rejoined node reaches streaming, lag=0"
+wait_streaming_zero_lag "${OLD_LEADER}" || true
+
+echo "Patroni /replica on rejoined node (expected 200 once healthy):"
+docker exec "${OLD_LEADER}" sh -c 'curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8008/replica'
+
+echo "== FINAL =="
+cluster
+EOF
+
+chmod +x /tmp/demo_auto_failover.sh
+bash /tmp/demo_auto_failover.sh
+```
+
+**What to observe**
+- Patroni elects leader mới trong cửa sổ TTL (`ttl: 30`).
+- Write qua HAProxy `:5000` vẫn chạy được sau failover.
+- Node cũ khi rejoin có thể tạm thời `State=running`, `Lag in MB=1~2`, sau đó về `streaming`, lag `0`.
+
+**Quick diagnosis script (khi nghi replica bị kẹt)**
+
+```bash
+cat > /tmp/check_replica_stuck.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+MEMBER="${1:-patroni1}"   # replica cần kiểm tra
+
+cluster() {
+  for c in patroni1 patroni2 patroni3; do
+    local out
+    out="$(docker exec "$c" patronictl list 2>/dev/null || true)"
+    if [[ -n "$out" ]]; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+  done
+  echo "No reachable Patroni node for patronictl list" >&2
+  return 1
+}
+
+leader_member() {
+  cluster | awk -F'|' '$4 ~ /Leader/ {gsub(/ /, "", $2); print $2; exit}'
+}
+
+LEADER="$(leader_member)"
+echo "Leader: $LEADER"
+echo
+
+echo "[cluster]"
+cluster
+echo
+
+echo "[leader pg_stat_replication]"
+docker exec "$LEADER" psql -U postgres -c \
+  "SELECT application_name, state, sync_state, sent_lsn, write_lsn, flush_lsn, replay_lsn FROM pg_stat_replication;"
+echo
+
+echo "[replica pg_stat_wal_receiver]"
+docker exec "$MEMBER" psql -U postgres -c \
+  "SELECT status, receive_start_lsn, flushed_lsn, latest_end_lsn, last_msg_send_time, last_msg_receipt_time FROM pg_stat_wal_receiver;"
+echo
+
+echo "[replica /replica status code]"
+docker exec "$MEMBER" sh -c 'curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8008/replica'
+EOF
+
+chmod +x /tmp/check_replica_stuck.sh
+bash /tmp/check_replica_stuck.sh patroni1
+```
+
+**Recovery when truly stuck (>60s không vào `streaming`)**
+
+```bash
+# Reinit đúng 1 member bị kẹt (không restart cả cluster)
+# chạy từ bất kỳ Patroni node nào còn sống (ví dụ patroni2)
+docker exec <any-running-patroni-node> patronictl reinit postgres-ha <stuck-member-name> --force
+docker exec <any-running-patroni-node> patronictl list
+```
+
+**Read-path note**
+- Cluster 3 node (1 primary + 2 replica) vẫn đảm bảo write HA.
+- Read HA có thể giảm tạm thời khi failover vì còn 1 replica sống phải catch-up timeline trước.
+
+**Self-healing options đang bật trong repo**
+- `remove_data_directory_on_rewind_failure: true`: nếu `pg_rewind` fail, Patroni xóa local `PGDATA` và clone lại từ leader.
+- `remove_data_directory_on_diverged_timelines: true`: nếu diverged timeline không replay an toàn được, Patroni xóa `PGDATA` và base backup lại.
+- Trade-off: tốn thời gian/IO hơn lúc recovery, đổi lại tránh trạng thái lag kẹt kéo dài.
 
 ### ⚖️ Read Load Balancing ✅
 
