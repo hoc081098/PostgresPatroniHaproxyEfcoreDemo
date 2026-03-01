@@ -66,7 +66,7 @@ open http://localhost:8404
 
 ## Demo Scenarios
 
-### ✅ Manual Switchover (done)
+### 🔀 Manual Switchover ✅
 
 A **switchover** is a graceful handover — the primary finishes in-flight transactions before stepping down.
 Use `failover` only when the primary is already dead.
@@ -145,14 +145,14 @@ hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 
 ---
 
-### 🔁 Automatic Failover (kill the primary)
+### 💥 Automatic Failover (kill the primary)
 
 - [ ] `docker stop patroni1` → Patroni elects a new leader automatically
 - [ ] HAProxy detects the change via health checks within ~3–9s (`inter 3s fall 3`)
 - [ ] EF Core write queries resume without any code change
 - [ ] `docker start patroni1` → node rejoins as replica, HAProxy adds it back to the read pool
 
-### ✅ Read Load Balancing (done)
+### ⚖️ Read Load Balancing ✅
 
 `GET /products` returns `servedByNode` — the IP of the PostgreSQL node that actually served the query (via `inet_server_addr()`).
 
@@ -180,7 +180,7 @@ curl http://localhost:5050/products
 
 - [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
 
-### ✅ EF Core Migrations & CRUD Endpoints (done)
+### 🗄️ EF Core Migrations & CRUD Endpoints ✅
 
 **Entity:** `Product` — uses a **factory pattern** (`Product.Create(...)`) with private setters to prevent invalid state. EF Core materializes it via a private parameterless constructor.
 
