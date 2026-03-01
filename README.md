@@ -148,89 +148,13 @@ hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 ### 💥 Automatic Failover (kill the primary)
 
 ```bash
-# one-shot demo script: kill leader -> auto failover -> write check -> rejoin check
-cat > /tmp/demo_auto_failover.sh <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
+chmod +x scripts/demo_auto_failover.sh scripts/check_replica_stuck.sh
 
-cluster() {
-  for c in patroni1 patroni2 patroni3; do
-    local out
-    out="$(docker exec "$c" patronictl list 2>/dev/null || true)"
-    if [[ -n "$out" ]]; then
-      printf '%s\n' "$out"
-      return 0
-    fi
-  done
-  echo "No reachable Patroni node for patronictl list" >&2
-  return 1
-}
+# one-shot demo: kill leader -> auto failover -> write check -> rejoin check
+bash scripts/demo_auto_failover.sh
 
-leader_member() {
-  cluster | awk -F'|' '$4 ~ /Leader/ {gsub(/ /, "", $2); print $2; exit}'
-}
-
-wait_new_leader() {
-  local old_leader="$1"
-  for _ in {1..45}; do
-    local now
-    now="$(leader_member || true)"
-    if [[ -n "${now}" && "${now}" != "${old_leader}" ]]; then
-      echo "$now"
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
-}
-
-wait_streaming_zero_lag() {
-  local member="$1"
-  for _ in {1..45}; do
-    local state_lag
-    state_lag="$(cluster | awk -F'|' -v m="$member" '$2 ~ m {gsub(/ /, "", $5); gsub(/ /, "", $7); print $5 "," $7; exit}')"
-    echo "[$(date +%H:%M:%S)] ${member}: ${state_lag:-missing}"
-    if [[ "$state_lag" == "streaming,0" ]]; then
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
-}
-
-echo "== BEFORE =="
-cluster
-
-OLD_LEADER="$(leader_member)"
-echo "Old leader: ${OLD_LEADER}"
-docker stop "${OLD_LEADER}" >/dev/null
-
-NEW_LEADER="$(wait_new_leader "${OLD_LEADER}")"
-echo "New leader: ${NEW_LEADER}"
-echo "== AFTER FAILOVER =="
-cluster
-
-echo "Write check via HAProxy :5000"
-curl -sS -X POST http://localhost:5050/products \
-  -H "Content-Type: application/json" \
-  -d '{"name":"After failover","price":9.99}'
-echo
-
-echo "Rejoin old leader: ${OLD_LEADER}"
-docker start "${OLD_LEADER}" >/dev/null
-
-echo "Wait until rejoined node reaches streaming, lag=0"
-wait_streaming_zero_lag "${OLD_LEADER}" || true
-
-echo "Patroni /replica on rejoined node (expected 200 once healthy):"
-docker exec "${OLD_LEADER}" sh -c 'curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8008/replica'
-
-echo "== FINAL =="
-cluster
-EOF
-
-chmod +x /tmp/demo_auto_failover.sh
-bash /tmp/demo_auto_failover.sh
+# optional: skip HTTP write check when app API on :5050 is not running
+SKIP_WRITE_CHECK=1 bash scripts/demo_auto_failover.sh
 ```
 
 **What to observe**
@@ -241,53 +165,8 @@ bash /tmp/demo_auto_failover.sh
 **Quick diagnosis script (khi nghi replica bị kẹt)**
 
 ```bash
-cat > /tmp/check_replica_stuck.sh <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-MEMBER="${1:-patroni1}"   # replica cần kiểm tra
-
-cluster() {
-  for c in patroni1 patroni2 patroni3; do
-    local out
-    out="$(docker exec "$c" patronictl list 2>/dev/null || true)"
-    if [[ -n "$out" ]]; then
-      printf '%s\n' "$out"
-      return 0
-    fi
-  done
-  echo "No reachable Patroni node for patronictl list" >&2
-  return 1
-}
-
-leader_member() {
-  cluster | awk -F'|' '$4 ~ /Leader/ {gsub(/ /, "", $2); print $2; exit}'
-}
-
-LEADER="$(leader_member)"
-echo "Leader: $LEADER"
-echo
-
-echo "[cluster]"
-cluster
-echo
-
-echo "[leader pg_stat_replication]"
-docker exec "$LEADER" psql -U postgres -c \
-  "SELECT application_name, state, sync_state, sent_lsn, write_lsn, flush_lsn, replay_lsn FROM pg_stat_replication;"
-echo
-
-echo "[replica pg_stat_wal_receiver]"
-docker exec "$MEMBER" psql -U postgres -c \
-  "SELECT status, receive_start_lsn, flushed_lsn, latest_end_lsn, last_msg_send_time, last_msg_receipt_time FROM pg_stat_wal_receiver;"
-echo
-
-echo "[replica /replica status code]"
-docker exec "$MEMBER" sh -c 'curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8008/replica'
-EOF
-
-chmod +x /tmp/check_replica_stuck.sh
-bash /tmp/check_replica_stuck.sh patroni1
+# diagnose one replica member (default: patroni1)
+bash scripts/check_replica_stuck.sh patroni1
 ```
 
 **Recovery when truly stuck (>60s không vào `streaming`)**
