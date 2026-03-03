@@ -66,7 +66,7 @@ open http://localhost:8404
 
 ## Demo Scenarios
 
-### 🔀 Manual Switchover ✅
+### 1. 🔀 Manual Switchover ✅
 
 A **switchover** is a graceful handover — the primary finishes in-flight transactions before stepping down.
 Use `failover` only when the primary is already dead.
@@ -145,7 +145,7 @@ hoc.nguyen@MBAM0187 % docker exec -it patroni1 patronictl list
 
 ---
 
-### 💥 Automatic Failover (kill the primary)
+### 2. 💥 Automatic Failover (kill the primary) ✅
 
 ```bash
 chmod +x scripts/demo_auto_failover.sh scripts/check_replica_stuck.sh
@@ -187,7 +187,7 @@ docker exec <any-running-patroni-node> patronictl list
 - `remove_data_directory_on_diverged_timelines: true`: nếu diverged timeline không replay an toàn được, Patroni xóa `PGDATA` và base backup lại.
 - Trade-off: tốn thời gian/IO hơn lúc recovery, đổi lại tránh trạng thái lag kẹt kéo dài.
 
-### ⚖️ Read Load Balancing ✅
+### 3. ⚖️ Read Load Balancing ✅
 
 `GET /products` returns `servedByNode` — the IP of the PostgreSQL node that actually served the query (via `inet_server_addr()`).
 
@@ -215,7 +215,7 @@ curl http://localhost:7134/products
 
 - [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
 
-### 🗄️ EF Core Migrations & CRUD Endpoints ✅
+### 4. 🗄️ EF Core Migrations & CRUD Endpoints ✅
 
 **Entity:** `Product` — uses a **factory pattern** (`Product.Create(...)`) with private setters to prevent invalid state. EF Core materializes it via a private parameterless constructor.
 
@@ -252,7 +252,7 @@ dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir
 
 ### 🐛 Observability & Debugging
 
-- [x] **HAProxy stats page** (`:8404`) — walk through important columns to understand backend health and load distribution:
+- [x] ✅ **HAProxy stats page** (`:8404`) — walk through important columns to understand backend health and load distribution:
 
   **Queue** — `Cur / Max / Limit`
   - Number of requests currently waiting in queue because all backend connections are busy.
@@ -299,17 +299,17 @@ dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir
 - [ ] **Patroni REST API** — `curl` directly against each node: `/primary`, `/replica`, `/health`, `/patroni`, `/cluster`
 - [ ] **etcd inspection** — `etcdctl get --prefix /service/postgres-ha` to see the DCS keys Patroni writes (leader lock, member info, config)
 
-### 🌐 Connection Pooling
+### 7. 🌐 Connection Pooling
 
 - [ ] Add **PgBouncer** between the app and HAProxy; compare connection count with and without pooling under load
 - [ ] Show how **transaction-mode pooling** interacts with EF Core — session-level features (`SET LOCAL`, temp tables, advisory locks) won't work in this mode
 
-### 🏋️ Load Testing
+### 8. 🏋️ Load Testing
 
 - [ ] **k6 / pgbench** — concurrent read + write load; observe HAProxy stats, `pg_stat_activity`, replication lag in real time
 - [ ] **Chaos test** — combine failover + load test; measure p99 latency and error rate during the election window
 
-### ☁️ Production Patterns (stretch goals)
+### 9. ☁️ Production Patterns (stretch goals)
 
 - [ ] **WAL-G + MinIO** — configure S3-compatible backup, demo PITR (Point-In-Time Recovery)
 - [ ] **HA HAProxy** — add a second HAProxy + Keepalived VIP to remove HAProxy as a single point of failure
