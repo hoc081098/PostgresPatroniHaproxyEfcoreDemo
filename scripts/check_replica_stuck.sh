@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Target replica member to inspect (default: patroni1).
 member="${1:-patroni1}"
 
+# Return cluster status from any reachable Patroni node.
 cluster() {
   for c in patroni1 patroni2 patroni3; do
     local out
@@ -22,6 +24,7 @@ leader_member() {
 
 leader="$(leader_member)"
 
+# Snapshot key signals from cluster, leader, and target replica.
 echo "Leader: $leader"
 echo
 

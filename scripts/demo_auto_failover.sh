@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Return cluster status from the first Patroni node that is reachable.
 cluster() {
   for c in patroni1 patroni2 patroni3; do
     local out
@@ -18,6 +19,7 @@ leader_member() {
   cluster | awk -F'|' '$4 ~ /Leader/ {gsub(/ /, "", $2); print $2; exit}'
 }
 
+# Wait until Patroni elects a different leader after we stop the old one.
 wait_new_leader() {
   local old_leader="$1"
   for _ in {1..45}; do
@@ -32,6 +34,7 @@ wait_new_leader() {
   return 1
 }
 
+# Wait until a specific member is fully back in read-ready state.
 wait_streaming_zero_lag() {
   local member="$1"
   for _ in {1..45}; do
@@ -46,6 +49,7 @@ wait_streaming_zero_lag() {
   return 1
 }
 
+# 1) Capture baseline and stop current leader to trigger auto failover.
 echo "== BEFORE =="
 cluster
 
@@ -58,9 +62,10 @@ echo "New leader: $new_leader"
 echo "== AFTER FAILOVER =="
 cluster
 
+# 2) Optional app-level write probe through HAProxy write port.
 if [[ "${SKIP_WRITE_CHECK:-0}" != "1" ]]; then
   echo "Write check via HAProxy :5000"
-  if ! curl -fsS -X POST http://localhost:5050/products \
+  if ! curl -fsS -X POST http://localhost:7134/products \
     -H "Content-Type: application/json" \
     -d '{"name":"After failover","price":9.99}'; then
     echo "Write check failed (app API may not be running on :5050)." >&2
@@ -68,6 +73,7 @@ if [[ "${SKIP_WRITE_CHECK:-0}" != "1" ]]; then
   echo
 fi
 
+# 3) Rejoin old leader and wait until it becomes streaming with lag=0.
 echo "Rejoin old leader: $old_leader"
 docker start "$old_leader" >/dev/null
 

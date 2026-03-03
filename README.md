@@ -203,14 +203,14 @@ This confirms that:
 
 ```bash
 # Write a product
-curl -X POST http://localhost:5050/products \
+curl -X POST http://localhost:7134/products \
   -H "Content-Type: application/json" \
   -d '{"name": "Apple", "price": 1.99}'
 
 # Read products repeatedly — observe servedByNode changing between replica IPs
-curl http://localhost:5050/products
-curl http://localhost:5050/products
-curl http://localhost:5050/products
+curl http://localhost:7134/products
+curl http://localhost:7134/products
+curl http://localhost:7134/products
 ```
 
 - [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
