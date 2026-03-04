@@ -169,34 +169,34 @@ SKIP_WRITE_CHECK=1 bash scripts/demo_auto_failover.sh
 ```
 
 **What to observe**
-- Patroni elects leader mới trong cửa sổ TTL (`ttl: 30`).
-- Write qua HAProxy `:5000` vẫn chạy được sau failover.
-- Node cũ khi rejoin có thể tạm thời `State=running`, `Lag in MB=1~2`, sau đó về `streaming`, lag `0`.
+- Patroni elects a new leader within the TTL window (`ttl: 30`).
+- Writes through HAProxy `:5000` continue to succeed after failover.
+- The old node when rejoining may temporarily show `State=running`, `Lag in MB=1~2`, then recover to `streaming`, lag `0`.
 
-**Quick diagnosis script (khi nghi replica bị kẹt)**
+**Quick diagnosis script (when suspecting a stuck replica)**
 
 ```bash
 # diagnose one replica member (default: patroni1)
 bash scripts/check_replica_stuck.sh patroni1
 ```
 
-**Recovery when truly stuck (>60s không vào `streaming`)**
+**Recovery when truly stuck (>60s without entering `streaming`)**
 
 ```bash
-# Reinit đúng 1 member bị kẹt (không restart cả cluster)
-# chạy từ bất kỳ Patroni node nào còn sống (ví dụ patroni2)
+# Reinit only the stuck member (do not restart the entire cluster)
+# run from any live Patroni node (e.g. patroni2)
 docker exec <any-running-patroni-node> patronictl reinit postgres-ha <stuck-member-name> --force
 docker exec <any-running-patroni-node> patronictl list
 ```
 
 **Read-path note**
-- Cluster 3 node (1 primary + 2 replica) vẫn đảm bảo write HA.
-- Read HA có thể giảm tạm thời khi failover vì còn 1 replica sống phải catch-up timeline trước.
+- A 3-node cluster (1 primary + 2 replicas) still guarantees write HA.
+- Read HA may temporarily degrade during failover because the surviving replica must catch up on the timeline before serving traffic.
 
-**Self-healing options đang bật trong repo**
-- `remove_data_directory_on_rewind_failure: true`: nếu `pg_rewind` fail, Patroni xóa local `PGDATA` và clone lại từ leader.
-- `remove_data_directory_on_diverged_timelines: true`: nếu diverged timeline không replay an toàn được, Patroni xóa `PGDATA` và base backup lại.
-- Trade-off: tốn thời gian/IO hơn lúc recovery, đổi lại tránh trạng thái lag kẹt kéo dài.
+**Self-healing options enabled in this repo**
+- `remove_data_directory_on_rewind_failure: true`: if `pg_rewind` fails, Patroni deletes the local `PGDATA` and clones it fresh from the leader.
+- `remove_data_directory_on_diverged_timelines: true`: if a diverged timeline cannot be safely replayed, Patroni deletes `PGDATA` and takes a fresh base backup.
+- Trade-off: recovery takes more time/IO, but avoids prolonged stuck-lag states.
 
 ### 3. ⚖️ Read Load Balancing ✅
 
