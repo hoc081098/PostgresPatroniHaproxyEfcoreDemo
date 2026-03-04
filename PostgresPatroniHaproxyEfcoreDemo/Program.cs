@@ -55,5 +55,3 @@ app.UseHttpsRedirection();
 app.MapDemoEndpoints();
 
 app.Run();
-
-sealed record ProductRequest(string Name, decimal Price);

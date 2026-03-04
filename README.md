@@ -260,6 +260,8 @@ dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir
 
 - [x] ✅ **HAProxy stats page** (`:8404`) — walk through important columns to understand backend health and load distribution:
 
+  <img src="./images/img_manual_failover_before.png" alt="HAProxy stats — during switchover transition" height="400">
+
   **Queue** — `Cur / Max / Limit`
   - Number of requests currently waiting in queue because all backend connections are busy.
   - In a healthy low-traffic system this is always `0`. A non-zero `Cur` means the backend is saturated.
@@ -300,7 +302,6 @@ dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir
   - `Dwn` — total number of times this server has been marked `DOWN` since HAProxy started. A high number indicates instability or frequent flapping.
   - `Dwntme` — total accumulated downtime. Useful for measuring overall availability.
 
-  <img src="./images/img_manual_failover_before.png" alt="HAProxy stats — during switchover transition" height="400">
 
 - [ ] **Patroni REST API** — `curl` directly against each node: `/primary`, `/replica`, `/health`, `/patroni`, `/cluster`
 - [ ] **etcd inspection** — `etcdctl get --prefix /service/postgres-ha` to see the DCS keys Patroni writes (leader lock, member info, config)

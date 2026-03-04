@@ -4,6 +4,8 @@ using PostgresPatroniHaproxyEfcoreDemo.Data.Entities;
 
 namespace PostgresPatroniHaproxyEfcoreDemo;
 
+public sealed record ProductRequest(string Name, decimal Price);
+
 public static class DemoEndpoints
 {
     extension(IEndpointRouteBuilder endpoints)
