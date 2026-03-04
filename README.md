@@ -342,6 +342,10 @@ dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir
 - [ ] **HA HAProxy** — add a second HAProxy + Keepalived VIP to remove HAProxy as a single point of failure
 - [ ] **Kubernetes** — migrate to k8s using the [Zalando Postgres Operator](https://github.com/zalando/postgres-operator)
 
+### Technical notes
+
+- [EF Core retry on transient failures](./docs/efcore-retry-transient-failures.md)
+
 ## Repository Policies
 
 - License: [MIT](./LICENSE)
