@@ -17,7 +17,11 @@ builder.Services.AddDbContext<ApplicationReadDbContext>(options =>
     var connectionString = builder.Configuration.GetConnectionString("ReadDatabase");
     Guard.Against.NullOrWhiteSpace(connectionString);
     options
-        .UseNpgsql(connectionString)
+        .UseNpgsql(connectionString, npgsqlOptions =>
+            npgsqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorCodesToAdd: null))
         .UseSnakeCaseNamingConvention()
         // Read-only context — disable change tracking globally to reduce memory overhead.
         // Equivalent to appending .AsNoTracking() on every query, but applied at the context level.
@@ -28,7 +32,11 @@ builder.Services.AddDbContext<ApplicationWriteDbContext>(options =>
     var connectionString = builder.Configuration.GetConnectionString("WriteDatabase");
     Guard.Against.NullOrWhiteSpace(connectionString);
     options
-        .UseNpgsql(connectionString)
+        .UseNpgsql(connectionString, npgsqlOptions =>
+            npgsqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorCodesToAdd: null))
         .UseSnakeCaseNamingConvention();
 });
 
