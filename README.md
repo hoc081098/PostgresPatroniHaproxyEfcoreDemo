@@ -1,5 +1,10 @@
 # PostgreSQL High Availability with Patroni, HAProxy & EF Core
 
+Demo project to learn and validate PostgreSQL HA patterns end-to-end:
+- Patroni automatic failover and replica rejoin behavior
+- HAProxy write/read split (`:5000` for primary, `:5001` for replicas)
+- EF Core read/write `DbContext` split and `read-your-writes` edge case demo
+
 ## Architecture Overview
 
 ```
@@ -48,6 +53,12 @@
 | **ASP.NET Core + EF Core** | Two `DbContext`s — `ApplicationWriteDbContext` (→ HAProxy :5000) and `ApplicationReadDbContext` (→ HAProxy :5001)                                        |
 
 ---
+
+## Default Local URLs
+
+- App API (HTTPS): `https://localhost:7134`
+- App API (HTTP): `http://localhost:5014`
+- HAProxy stats UI: `http://localhost:8404`
 
 ## How to Run
 
@@ -153,7 +164,7 @@ chmod +x scripts/demo_auto_failover.sh scripts/check_replica_stuck.sh
 # one-shot demo: kill leader -> auto failover -> write check -> rejoin check
 bash scripts/demo_auto_failover.sh
 
-# optional: skip HTTP write check when app API on :5050 is not running
+# optional: skip HTTP write check when app API on :7134 is not running
 SKIP_WRITE_CHECK=1 bash scripts/demo_auto_failover.sh
 ```
 
@@ -330,3 +341,8 @@ dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir
 - [ ] **WAL-G + MinIO** — configure S3-compatible backup, demo PITR (Point-In-Time Recovery)
 - [ ] **HA HAProxy** — add a second HAProxy + Keepalived VIP to remove HAProxy as a single point of failure
 - [ ] **Kubernetes** — migrate to k8s using the [Zalando Postgres Operator](https://github.com/zalando/postgres-operator)
+
+## Repository Policies
+
+- License: [MIT](./LICENSE)
+- Security policy: [SECURITY.md](./SECURITY.md)
