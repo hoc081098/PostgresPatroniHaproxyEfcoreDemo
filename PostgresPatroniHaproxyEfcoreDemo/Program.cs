@@ -77,6 +77,68 @@ app.MapPost("/products",
         return Results.Created($"/products/{product.Id}", product);
     });
 
+// POST /products/read-your-writes-demo — write to primary, then immediately read
+// from replica (:5001) and primary (:5000) to demonstrate potential stale reads.
+app.MapPost("/products/read-your-writes-demo",
+    async (ProductRequest request, ApplicationReadDbContext readDb, ApplicationWriteDbContext writeDb) =>
+    {
+        var product = Product.Create(request.Name, request.Price, DateTimeOffset.UtcNow);
+
+        writeDb.Products.Add(product);
+        await writeDb.SaveChangesAsync();
+
+        // Clear tracked entities so the next primary read is fetched from DB, not from change tracker memory.
+        writeDb.ChangeTracker.Clear();
+
+        var productFromReplica = await readDb.Products
+            .Where(p => p.Id == product.Id)
+            .Select(p => new
+            {
+                p.Id,
+                p.Name,
+                p.Price,
+                p.CreatedAtUtc
+            })
+            .FirstOrDefaultAsync();
+
+        var productFromPrimary = await writeDb.Products
+            .AsNoTracking()
+            .Where(p => p.Id == product.Id)
+            .Select(p => new
+            {
+                p.Id,
+                p.Name,
+                p.Price,
+                p.CreatedAtUtc
+            })
+            .FirstOrDefaultAsync();
+
+        var replicaNode = await readDb.Database
+            .SqlQuery<string>($"SELECT inet_server_addr()::text AS \"Value\"")
+            .FirstOrDefaultAsync();
+
+        var primaryNode = await writeDb.Database
+            .SqlQuery<string>($"SELECT inet_server_addr()::text AS \"Value\"")
+            .FirstOrDefaultAsync();
+
+        return Results.Ok(new
+        {
+            WrittenProductId = product.Id,
+            Replica = new
+            {
+                ServedByNode = replicaNode,
+                Seen = productFromReplica is not null,
+                Product = productFromReplica,
+            },
+            Primary = new
+            {
+                ServedByNode = primaryNode,
+                Seen = productFromPrimary is not null,
+                Product = productFromPrimary,
+            }
+        });
+    });
+
 // GET /products — read through HAProxy :5001 → replica nodes (round-robin)
 // Each request may land on a different replica — see inet_server_addr() in the response to verify
 app.MapGet("/products", async (ApplicationReadDbContext readDb) =>

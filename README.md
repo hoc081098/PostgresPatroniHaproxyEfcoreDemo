@@ -213,7 +213,14 @@ curl https://localhost:7134/products
 curl https://localhost:7134/products
 ```
 
-- [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
+- [x] Demonstrate **read-your-writes** edge case via `/products/read-your-writes-demo`
+
+```bash
+# Write to primary, then immediately read from replica and primary for the same product ID
+curl -X POST https://localhost:7134/products/read-your-writes-demo \
+  -H "Content-Type: application/json" \
+  -d '{"name": "RYW demo", "price": 2.49}'
+```
 
 ### 4. 🗄️ EF Core Migrations & CRUD Endpoints ✅
 
@@ -241,9 +248,8 @@ dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir
 | Method | Path | DbContext | Routes to |
 |---|---|---|---|
 | `POST` | `/products` | `ApplicationWriteDbContext` | HAProxy `:5000` → primary |
+| `POST` | `/products/read-your-writes-demo` | `ApplicationWriteDbContext` + `ApplicationReadDbContext` | write to primary (`:5000`), then immediate read from replica (`:5001`) and primary (`:5000`) |
 | `GET` | `/products` | `ApplicationReadDbContext` | HAProxy `:5001` → replicas (round-robin) |
-
-- [ ] Demonstrate **read-your-writes** edge case: a write followed immediately by a read on a replica may not see the freshest data due to replication lag
 
 ### 🔒 Security — Non-superuser App User
 
