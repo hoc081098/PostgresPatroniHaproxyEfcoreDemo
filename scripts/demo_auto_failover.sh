@@ -65,10 +65,10 @@ cluster
 # 2) Optional app-level write probe through HAProxy write port.
 if [[ "${SKIP_WRITE_CHECK:-0}" != "1" ]]; then
   echo "Write check via HAProxy :5000"
-  if ! curl -fsS -X POST http://localhost:7134/products \
+  if ! curl -fsS -X POST https://localhost:7134/products \
     -H "Content-Type: application/json" \
     -d '{"name":"After failover","price":9.99}'; then
-    echo "Write check failed (app API may not be running on :5050)." >&2
+    echo "Write check failed (app API may not be running on :7134)." >&2
   fi
   echo
 fi

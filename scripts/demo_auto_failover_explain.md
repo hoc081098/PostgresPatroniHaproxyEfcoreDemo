@@ -138,7 +138,7 @@ if [[ "${SKIP_WRITE_CHECK:-0}" != "1" ]]; then
 # Cho phép skip bước này bằng: SKIP_WRITE_CHECK=1 ./demo_auto_failover.sh
 
   echo "Write check via HAProxy :5000"
-  if ! curl -fsS -X POST http://localhost:7134/products \
+  if ! curl -fsS -X POST https://localhost:7134/products \
     -H "Content-Type: application/json" \
     -d '{"name":"After failover","price":9.99}'; then
   # curl -f  → fail với exit code ≠ 0 nếu HTTP response là 4xx/5xx
