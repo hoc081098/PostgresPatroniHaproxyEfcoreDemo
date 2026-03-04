@@ -303,7 +303,16 @@ dotnet ef migrations add <Name> --context ApplicationWriteDbContext --output-dir
   - `Dwntme` — total accumulated downtime. Useful for measuring overall availability.
 
 
-- [ ] **Patroni REST API** — `curl` directly against each node: `/primary`, `/replica`, `/health`, `/patroni`, `/cluster`
+- [x] ✅ **Patroni REST API** — use script to query `/primary`, `/replica`, `/health`, `/patroni`, `/cluster`:
+
+  ```bash
+  chmod +x scripts/patroni_rest_api.sh
+
+  # Run against each node (default node is patroni1)
+  bash scripts/patroni_rest_api.sh patroni1
+  bash scripts/patroni_rest_api.sh patroni2
+  bash scripts/patroni_rest_api.sh patroni3
+  ```
 - [ ] **etcd inspection** — `etcdctl get --prefix /service/postgres-ha` to see the DCS keys Patroni writes (leader lock, member info, config)
 
 ### 7. 🌐 Connection Pooling
