@@ -1,5 +1,7 @@
 # PostgreSQL High Availability with Patroni, HAProxy & EF Core
 
+[![Hits](https://hits.sh/github.com/hoc081098/PostgresPatroniHaproxyEfcoreDemo.svg)](https://hits.sh/github.com/hoc081098/PostgresPatroniHaproxyEfcoreDemo/)
+
 Demo project to learn and validate PostgreSQL HA patterns end-to-end:
 - Patroni automatic failover and replica rejoin behavior
 - HAProxy write/read split (`:5000` for primary, `:5001` for replicas)
