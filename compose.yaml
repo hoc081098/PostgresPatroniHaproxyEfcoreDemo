@@ -148,7 +148,7 @@ services:
   
   # ----------------------------------------- HAProxy ----------------------------------------
   haproxy1:
-    image: haproxy:2.8.18
+    image: haproxy:2.9.15
     container_name: haproxy1
     hostname: haproxy1
     networks: [ demo ]
